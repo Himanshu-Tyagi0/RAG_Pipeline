@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.ipynb_checkpoints/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Secrets / local config
+.env
+
+# Vector store (generated locally, can be rebuilt from the PDFs)
+vector_store/
+DATA/vector_store/
+
+# Source documents (often large or copyrighted - add them locally)
+*.pdf
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
