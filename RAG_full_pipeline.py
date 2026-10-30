@@ -8,7 +8,12 @@ from sklearn.metrics.pairwise import cosine_similarity
 from langchain_ollama import ChatOllama
 import hashlib
 
-def get_all_documents(folder_path="C:\\Users\\tyagi\\langchain_projects\\RAG_Understanding"):
+path = "C:\\Users\\tyagi\\langchain_projects\\RAG_Understanding"
+embedding_model = "qwen3-embedding" #Ollam
+llm_model = "llama2" #Ollama 
+
+
+def get_all_documents(folder_path=path):
     if folder_path is None:
         folder_path = os.path.join(os.getcwd(),"Data")
 
@@ -36,13 +41,6 @@ def get_all_documents(folder_path="C:\\Users\\tyagi\\langchain_projects\\RAG_Und
     return all_docs
 
 
-def file_hash(path, block_size=1024 * 1024):
-    h = hashlib.sha256()
-    with open(path, "rb") as f:
-        for block in iter(lambda: f.read(block_size), b""):
-            h.update(block)
-    return h.hexdigest()
-
 
 def chunk_creator(documents,chunk_size=500,chunk_overlap=100):
     chunk_generator = RecursiveCharacterTextSplitter(
@@ -57,7 +55,7 @@ def chunk_creator(documents,chunk_size=500,chunk_overlap=100):
 class EmbeddingManager:
     def __init__(self):
         self.model = OllamaEmbeddings(
-            model="qwen3-embedding"
+            model=embedding_model
         )
 
     def embedding_generator(self,text):
@@ -91,14 +89,6 @@ class VectorStoreManager:
             name=self.collection_name,
             metadata={"description": "This is demo RAG"}
         )
-
-    def hash_exists(self, fhash):
-        res = self.collection.get(where={"file_hash": fhash}, limit=1, include=[])
-        return len(res["ids"]) > 0
-
-    def delete_by_source(self, filename):
-        # removes old chunks if a file with this name was ingested before (e.g. it was edited)
-        self.collection.delete(where={"source_file": filename})
 
     def add_documents(self, embeddings, documents, ids):
         if not (len(embeddings) == len(documents) == len(ids)):
@@ -190,107 +180,81 @@ class RAGretriever:
         return retrieved_documents
 
 
-def generate_output(query, retriever, llm, top_k=3):
-    results = retriever.retrieve(query, top_k)
+def run_rag(folder_path=path, reindex=False, top_k=3):
+    """Runs the whole RAG system: set up -> load PDFs -> chunk -> embed -> store -> retrieve -> answer."""
 
-    # Extract retrieved document content
-    context = "\n\n".join(
-        doc["documents"] for doc in results
-    ) if results else ""
-
-    # Handle empty retrieval
-    if not context.strip():
-        return "We found no relevant context for the given query."
-
-    # Insert the actual context and query
-    prompt = f"""
-                You are a helpful question-answering assistant.
-
-                Answer the user's query using ONLY the information
-                provided in the context below.
-
-                If the context does not contain enough information,
-                clearly state that you do not know based on the
-                available context. Do not invent facts.
-
-                Context:
-                {context}
-
-                Query:
-                {query}
-
-    """
-
-
+    # 1) Set up the embedding model, vector store and LLM
     try:
-        response = llm.invoke(prompt)
-        return response.content
+        em = EmbeddingManager()
+        em.embedding_generator(["health check"])    # fails early if Ollama / the model is missing
+        vs = VectorStoreManager()
+        llm = ChatOllama(model=llm_model, temperature=0.1)
     except Exception as e:
-        print(f"LLM call failed : {e}")
-        print("Sorry, i couldn't generate an answer right now.")
+        print(f"Startup failed : {e}")
+        print(f"Is Ollama running? Did you run: ollama pull {embedding_model}  and  ollama pull {llm_model} ?")
+        return
 
+    # 2) Index the PDFs (only when the database is empty, or when reindex=True)
+    if reindex:
+        vs.client.delete_collection(vs.collection_name)  # wipe the old data
+        vs._initialize_store()          # create a fresh empty collection
 
+    if vs.collection.count() == 0:
+        try:
+            docs = get_all_documents(folder_path)           # load all PDFs
+            if not docs:
+                print(f"No PDF files found in : {folder_path}")
+                return
 
-def ingest_folder(folder_path, embedding_manager, vector_store):
-    if not os.path.isdir(folder_path):
-        raise FileNotFoundError(f"Folder not Found : {folder_path}")
+            chunks = chunk_creator(docs)                    # split into chunks
+            embeddings = em.embedding_generator([c.page_content for c in chunks])# embed
+            ids = [f"chunk_{i}" for i in range(len(chunks))]
+            vs.add_documents(embeddings, chunks, ids)       # store
+        except Exception as e:
+            print(f"Indexing failed : {e}")
+            return
+    else:
+        print(f"Using the existing vector store ({vs.collection.count()} chunks). "
+              "After adding or changing PDFs, run run_rag(reindex=True) once.")
 
-    added, skipped = 0, 0
+    # 3) Ask questions: retrieve -> build the prompt -> ask the LLM
+    retriever = RAGretriever(em, vs)
 
-    for filename in sorted(os.listdir(folder_path)):
-        if not filename.lower().endswith(".pdf"):
+    while True:
+        query = input("\nEnter your query (or 'exit' to quit): ").strip()
+
+        if not query:
             continue
 
-        pdf_path = os.path.join(folder_path, filename)
+        if query.lower() == "exit":
+            print("Exiting.....")
+            break
+
+        # retrieve the most relevant chunks and join them into one context block
+        results = retriever.retrieve(query, top_k)
+        context = "\n\n".join(doc["documents"] for doc in results)
+
+        if not context.strip():
+            print("\nAnswer: We found no relevant context for the given query.")
+            continue
+
+        # the prompt that is sent to the LLM
+        prompt = (
+            "You are a helpful question-answering assistant.\n\n"
+            "Answer the user's query using ONLY the information provided in the context below.\n"
+            "If the context does not contain enough information, clearly state that you do not\n"
+            "know based on the available context. Do not invent facts.\n\n"
+            f"Context:\n{context}\n\n"
+            f"Query:\n{query}\n"
+        )
 
         try:
-            fhash = file_hash(pdf_path)
-
-            # Same content already in the vector store -> skip (no load/chunk/embed)
-            if vector_store.hash_exists(fhash):
-                print(f"Skipping (already indexed): {filename}")
-                skipped += 1
-                continue
-
-            # Same filename but changed content -> remove the old chunks first
-            vector_store.delete_by_source(filename)
-
-            docs = PyPDFLoader(pdf_path).load()
-            chunks = chunk_creator(docs)
-
-            for c in chunks:
-                c.metadata["file_hash"] = fhash
-                c.metadata["source_file"] = filename
-
-            embeddings = embedding_manager.embedding_generator(
-                [c.page_content for c in chunks]
-            )
-            ids = [f"{fhash}_{i}" for i in range(len(chunks))]
-
-            vector_store.add_documents(embeddings, chunks, ids)
-            added += 1
-            print(f"Indexed: {filename} ({len(chunks)} chunks)")
-
+            response = llm.invoke(prompt)
+            print("\nAnswer:", response.content)
         except Exception as e:
-            print(f"Failed on {filename} : {e}")
+            print(f"LLM call failed : {e}")
+            print("\nAnswer: Sorry, I couldn't generate an answer right now.")
 
-    print(f"Ingestion done. New: {added}, Skipped: {skipped}")
 
-
-em = EmbeddingManager()
-vs = VectorStoreManager()
-
-ingest_folder("C:\\Users\\tyagi\\langchain_projects\\RAG_Understanding", em, vs)
-
-retriever = RAGretriever(em, vs)
-llm = ChatOllama(model="llama2", temperature=0.1)
-
-while True:
-    query = input("\nEnter your query (or 'exit' to quit): ")
-
-    if query.lower() == "exit":
-        print("Exiting.....")
-        break
-
-    answer = generate_output(query, retriever, llm)
-    print("\nAnswer:", answer)
+if __name__ == "__main__":
+    run_rag()
