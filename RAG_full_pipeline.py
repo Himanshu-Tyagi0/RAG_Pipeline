@@ -3,10 +3,12 @@ import os
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_ollama import OllamaEmbeddings
 import chromadb
-import uuid
 from sklearn.metrics.pairwise import cosine_similarity
 from langchain_ollama import ChatOllama
-import hashlib
+from rank_bm25 import BM25Okapi
+import numpy as np
+from langchain_core.documents import Document
+from typing import Optional
 
 path = "C:\\Users\\tyagi\\langchain_projects\\RAG_Understanding"
 embedding_model = "qwen3-embedding" #Ollam
@@ -87,7 +89,8 @@ class VectorStoreManager:
 
         self.collection = self.client.get_or_create_collection(
             name=self.collection_name,
-            metadata={"description": "This is demo RAG"}
+            metadata={"description": "This is demo RAG",
+                      "hnsw:space" : "cosine"},
         )
 
     def add_documents(self, embeddings, documents, ids):
@@ -137,79 +140,243 @@ class VectorStoreManager:
         print("Docs in collection:", self.collection.count())
 
 
-class RAGretriever:
-    def __init__(self,embedding_manager,vector_store):
+class HybridRetriever:
+    RRF_K = 60
+
+    def __init__(self, embedding_manager, vector_store,
+                weights=(0.5, 0.5), vector_k=5, bm25_k=5):
         self.embedding_manager = embedding_manager
         self.vector_store = vector_store
+        self.weights = list(weights)
+        self.vector_k = vector_k
+        self.bm25_k = bm25_k
 
-    def retrieve(self,query,top_k=5,score_threshold=0.0):
+        self.bm25_docs: list[Document] = []
+        self.bm25: BM25Okapi | None = None
 
-        query_embedding = self.embedding_manager.embedding_generator([query])[0]
+        # ← this is the ONLY BM25 call in __init__ for the no-cache version
+        self._build_bm25_from_store()
+
+        space = (self.vector_store.collection.metadata or {}).get("hnsw:space", "l2")
+        if space != "cosine":
+            print(f"[warn] collection hnsw:space = '{space}', not 'cosine'. "
+                f"similarity_score = 1 - distance will be misleading.")
+
+
+    def _build_bm25_from_store(self):
+        data = self.vector_store.collection.get(include=["documents", "metadatas"])
+        texts = data.get("documents") or []
+        metas = data.get("metadatas") or [{} for _ in texts]
+
+        if not texts:
+            print("BM25: collection is empty — BM25 disabled.")
+            return
+
+        self.bm25_docs = [Document(page_content=t, metadata=m or {})
+                        for t, m in zip(texts, metas)]
+        tokenized = [self._tokenize(d.page_content) for d in self.bm25_docs]
+        self.bm25 = BM25Okapi(tokenized)
+        print(f"BM25: built from {len(self.bm25_docs)} stored chunks (no embeddings).")
+
+    @staticmethod
+    def _tokenize(text: str) -> list[str]:
+        return text.lower().split()
+
+    def retrieve(self, query, top_k=5, score_threshold=0.0, mode="hybrid"):
+        mode = mode.lower()
+
+        if mode == "vector":
+            return self._retrieve_vector(query, top_k, score_threshold)
+        
+        if mode == "bm25":
+            return self._retrieve_bm25(query, top_k)
+        
+        return self._retrieve_hybrid(query, top_k)
+
+    def compare(self, query, top_k=5):
+
+        print(f"\n{'=' * 72}\nQUERY: {query}\n{'=' * 72}")
+
+        sections = [
+            ("VECTOR (cosine, higher=better)", self._retrieve_vector(query, top_k, 0.0)),
+            ("BM25 (true score, higher=better)", self._retrieve_bm25(query, top_k)),
+            ("HYBRID (RRF, higher=better)", self._retrieve_hybrid(query, top_k)),
+        ]
+
+        for title, results in sections:
+            print(f"\n--- {title} ---")
+
+            if not results:
+                print("  (no results)")
+
+                continue
+
+            for r in results:
+                print(f"  {r['rank']}. {self._format_score(r)} "
+                      f"{r['documents'].replace(chr(10), ' ')[:90]}...")
+        print(f"\n{'=' * 72}\n")
+
+
+    def _retrieve_vector(self, query, top_k, score_threshold):
+
+        q_emb = self.embedding_manager.embedding_generator([query])[0]
 
         result = self.vector_store.collection.query(
-            query_embeddings = [query_embedding],
-            n_results = top_k
+            query_embeddings=[q_emb],
+            n_results=top_k,
         )
 
-        retrieved_documents = []
+        out = []
 
         if result["documents"] and result["documents"][0]:
-            ids = result["ids"][0]
-            metadatas = result["metadatas"][0]
-            documents = result["documents"][0]
-            distances = result["distances"][0]
+            for i, (doc_id, meta, doc, dist) in enumerate(zip(
+                result["ids"][0],
+                result["metadatas"][0],
+                result["documents"][0],
+                result["distances"][0],
+            )):
+                
+                sim = 1.0 - dist  # cosine distance → similarity
 
-            for i, (doc_id,metadata,document,distance) in enumerate(zip(ids,metadatas,documents,distances)):
-                similarity_score = 1 - distance
-
-                if similarity_score >= score_threshold:
-                    retrieved_documents.append({
-                        "id" : doc_id,
-                        "documents" : document,
-                        "metadata" : metadata,
-                        "distance" : distance,
-                        "similarity_score" : similarity_score,
-                        "rank" : i + 1
+                if sim >= score_threshold:
+                    out.append({
+                        "id": doc_id,
+                        "documents": doc,
+                        "metadata": meta,
+                        "distance": dist,
+                        "similarity_score": sim,
+                        "rank": i + 1,
+                        "source": "vector",
                     })
 
-            print(f"{len(retrieved_documents)} Documents Retrieved")
+        print(f"[vector] {len(out)} document(s) retrieved")
 
-        else:
-            print("No Documents Found")
+        return out
 
-        return retrieved_documents
 
+    def _retrieve_bm25(self, query, top_k):
+
+        if self.bm25 is None:
+            print("[bm25] BM25 unavailable.")
+
+            return []
+        
+        scores = self.bm25.get_scores(self._tokenize(query))
+
+        order = np.argsort(scores)[::-1][:top_k]
+
+        out = []
+
+        for rank, idx in enumerate(order, start=1):
+            d = self.bm25_docs[idx]
+
+            out.append({
+                "id": f"bm25_{idx}",
+                "documents": d.page_content,
+                "metadata": d.metadata,
+                "distance": None,
+                "similarity_score": None,
+                "bm25_score": float(scores[idx]),
+                "rank": rank,
+                "source": "bm25",
+            })
+
+        print(f"[bm25] {len(out)} document(s) retrieved")
+
+        return out
+
+
+    def _retrieve_hybrid(self, query, top_k):
+
+        if self.bm25 is None:
+            print("[hybrid] BM25 unavailable — falling back to vector.")
+
+            return self._retrieve_vector(query, top_k, 0.0)
+
+        vec = self._retrieve_vector(query, self.vector_k, 0.0)
+        bm  = self._retrieve_bm25(query, self.bm25_k)
+
+        vec_docs = [Document(page_content=r["documents"], metadata=r["metadata"]) for r in vec]
+        bm_docs  = [Document(page_content=r["documents"], metadata=r["metadata"]) for r in bm]
+
+        fused = self._rrf([bm_docs, vec_docs], weights=self.weights)
+
+        out = []
+
+        for i, (doc, score) in enumerate(fused[:top_k], start=1):
+
+            out.append({
+                "id": f"hybrid_{i}",
+                "documents": doc.page_content,
+                "metadata": doc.metadata,
+                "distance": None,
+                "similarity_score": None,
+                "rrf_score": score,
+                "rank": i,
+                "source": "hybrid",
+            })
+
+        print(f"[hybrid] {len(out)} document(s) retrieved")
+
+        return out
+
+    def _rrf(self, ranked_lists, weights):
+
+        keyed = {}
+
+        for w, docs in zip(weights, ranked_lists):
+
+
+            for rank, doc in enumerate(docs, start=1):
+                k = doc.page_content
+
+                if k not in keyed:
+
+                    keyed[k] = {"doc": doc, "score": 0.0}
+                keyed[k]["score"] += w / (self.RRF_K + rank)
+
+        fused = sorted(keyed.values(), key=lambda x: x["score"], reverse=True)
+
+        return [(item["doc"], item["score"]) for item in fused]
+
+    @staticmethod
+    def _format_score(r):
+        if r["source"] == "vector":
+            return f"[sim={r['similarity_score']:.4f} dist={r['distance']:.4f}]"
+        if r["source"] == "bm25":
+            return f"[bm25={r['bm25_score']:.4f}]"
+        if r["source"] == "hybrid":
+            return f"[rrf={r['rrf_score']:.6f}]"
+        return "[score=?]"
 
 def run_rag(folder_path=path, reindex=False, top_k=3):
-    """Runs the whole RAG system: set up -> load PDFs -> chunk -> embed -> store -> retrieve -> answer."""
-
-    # 1) Set up the embedding model, vector store and LLM
+    # 1) Startup
     try:
         em = EmbeddingManager()
-        em.embedding_generator(["health check"])    # fails early if Ollama / the model is missing
+        em.embedding_generator(["health check"])   # early failure if Ollama missing
         vs = VectorStoreManager()
         llm = ChatOllama(model=llm_model, temperature=0.1)
     except Exception as e:
         print(f"Startup failed : {e}")
-        print(f"Is Ollama running? Did you run: ollama pull {embedding_model}  and  ollama pull {llm_model} ?")
+        print(f"Is Ollama running? Did you run: ollama pull {embedding_model} "
+              f" and  ollama pull {llm_model} ?")
         return
 
-    # 2) Index the PDFs (only when the database is empty, or when reindex=True)
+    # 2) Indexing
     if reindex:
-        vs.client.delete_collection(vs.collection_name)  # wipe the old data
-        vs._initialize_store()          # create a fresh empty collection
+        vs.client.delete_collection(vs.collection_name)
+        vs._initialize_store()
 
     if vs.collection.count() == 0:
         try:
-            docs = get_all_documents(folder_path)           # load all PDFs
+            docs = get_all_documents(folder_path)
             if not docs:
                 print(f"No PDF files found in : {folder_path}")
                 return
-
-            chunks = chunk_creator(docs)                    # split into chunks
-            embeddings = em.embedding_generator([c.page_content for c in chunks])# embed
+            chunks = chunk_creator(docs)
+            embeddings = em.embedding_generator([c.page_content for c in chunks])
             ids = [f"chunk_{i}" for i in range(len(chunks))]
-            vs.add_documents(embeddings, chunks, ids)       # store
+            vs.add_documents(embeddings, chunks, ids)
         except Exception as e:
             print(f"Indexing failed : {e}")
             return
@@ -217,28 +384,42 @@ def run_rag(folder_path=path, reindex=False, top_k=3):
         print(f"Using the existing vector store ({vs.collection.count()} chunks). "
               "After adding or changing PDFs, run run_rag(reindex=True) once.")
 
-    # 3) Ask questions: retrieve -> build the prompt -> ask the LLM
-    retriever = RAGretriever(em, vs)
+    # 3) Build retriever (BM25 built once at startup from the store)
+    retriever = HybridRetriever(em, vs)
 
+    # 4) Query loop
     while True:
-        query = input("\nEnter your query (or 'exit' to quit): ").strip()
+        query = input(
+            "\nEnter your query "
+            "(or 'compare' / 'mode' / 'exit'): "
+        ).strip()
 
         if not query:
             continue
-
         if query.lower() == "exit":
             print("Exiting.....")
             break
+        if query.lower() == "compare":
+            q2 = input("Query to compare: ").strip()
+            if q2:
+                retriever.compare(q2, top_k=top_k)
+            continue
 
-        # retrieve the most relevant chunks and join them into one context block
-        results = retriever.retrieve(query, top_k)
-        context = "\n\n".join(doc["documents"] for doc in results)
+        mode = input(
+            "Mode [vector/bm25/hybrid] (default=hybrid): "
+        ).strip().lower() or "hybrid"
+        if mode not in ("vector", "bm25", "hybrid"):
+            print(f"Unknown mode '{mode}', using hybrid.")
+            mode = "hybrid"
 
-        if not context.strip():
+        results = retriever.retrieve(query, top_k=top_k, mode=mode)
+
+        if not results:
             print("\nAnswer: We found no relevant context for the given query.")
             continue
 
-        # the prompt that is sent to the LLM
+        context = "\n\n".join(r["documents"] for r in results)
+
         prompt = (
             "You are a helpful question-answering assistant.\n\n"
             "Answer the user's query using ONLY the information provided in the context below.\n"

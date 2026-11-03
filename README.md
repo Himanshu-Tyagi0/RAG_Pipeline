@@ -1,29 +1,47 @@
 # RAG Pipeline
 
-A small Retrieval-Augmented Generation (RAG) project built with LangChain, Hugging Face embeddings and ChromaDB. It reads PDF files, splits them into chunks, turns the chunks into vector embeddings, stores them in a persistent vector database, and retrieves the chunks most relevant to a question.
+A Retrieval-Augmented Generation (RAG) project built with LangChain, Ollama and ChromaDB. It reads PDF files, splits them into chunks, embeds them with a local Ollama embedding model, stores them in a persistent Chroma collection, retrieves the most relevant chunks with **hybrid search (vector + BM25 + Reciprocal Rank Fusion)**, and generates a grounded answer with a local Ollama LLM.
 
-> **Status:** learning / practice project. Ingestion and retrieval are implemented; connecting an LLM to generate the final answer is the next step.
+> **Status:** working end-to-end. Ingestion, hybrid retrieval, side-by-side comparison and LLM answer generation are all implemented.
 
 ## How it works
 
-```
-PDFs  ->  load pages  ->  split into chunks  ->  embed  ->  ChromaDB  ->  retrieve top-k chunks
-```
 
 | Stage | Class / function | Details |
 |-------|------------------|---------|
-| Load | `load_all_pdf()` | Reads every `.pdf` in a folder with `PyPDFLoader` |
-| Chunk | `chunk_maker()` | `RecursiveCharacterTextSplitter`, 1000 characters per chunk, 100 overlap |
-| Embed | `EmbeddingManager` | `sentence-transformers/all-MiniLM-L6-v2` (384-dimensional vectors) |
-| Store | `VectorStoreManager` | Persistent ChromaDB collection named `pdf_documents` |
-| Retrieve | `RAGRetriever` | Embeds the query and returns the top-k closest chunks with similarity scores |
+| Load | `get_all_documents()` | Reads every `.pdf` in a folder with `PyPDFLoader` |
+| Chunk | `chunk_creator()` | `RecursiveCharacterTextSplitter`, 500 chars per chunk, 100 overlap |
+| Embed | `EmbeddingManager` | Ollama `qwen3-embedding` model |
+| Store | `VectorStoreManager` | Persistent Chroma collection `pdf_documents`, **`hnsw:space = cosine`**, upsert with deterministic IDs |
+| Retrieve | `HybridRetriever` | Three modes: `vector`, `bm25`, `hybrid` (RRF). `compare()` shows all three side-by-side with scores |
+| Answer | `run_rag()` | Builds a context-grounded prompt and calls Ollama `llama2` |
+
+## Retrieval modes
+
+`HybridRetriever.retrieve(query, top_k, mode=...)` supports:
+
+| Mode | Score returned | Direction |
+|------|----------------|-----------|
+| `vector` | `similarity_score = 1 - cosine_distance` (plus raw `distance`) | higher = better |
+| `bm25`   | `bm25_score` — true `BM25Okapi` lexical score | higher = better |
+| `hybrid` | `rrf_score` — Reciprocal Rank Fusion of the two ranked lists | higher = better |
+
+`HybridRetriever.compare(query, top_k)` prints the three result lists side-by-side so you can see where BM25 and vector disagree and how RRF resolves it.
+
+### Notes on scores
+
+- `rrf_score` is **only comparable within a single query** — it's a rank-based fusion weight, not an absolute relevance number.
+- `bm25_score` depends on query length and corpus statistics — also not comparable across queries.
+- `similarity_score` is a true cosine similarity **only because** the collection is created with `"hnsw:space": "cosine"`. If the collection was created earlier with the default L2 metric, reindex once with `run_rag(reindex=True)`.
 
 ## Tech stack
 
 - Python 3.10+
-- [LangChain](https://python.langchain.com/) (document loaders, text splitters)
-- [Hugging Face sentence-transformers](https://www.sbert.net/) for embeddings
-- [ChromaDB](https://www.trychroma.com/) as the vector store
+- [LangChain](https://python.langchain.com/) — document loaders, text splitters
+- [Ollama](https://ollama.com/) — local embeddings (`qwen3-embedding`) and LLM (`llama2`)
+- [ChromaDB](https://www.trychroma.com/) — persistent vector store
+- [rank_bm25](https://github.com/dorianbrown/rank_bm25) — BM25 lexical retrieval
+- [NumPy](https://numpy.org/) — score sorting
 
 ## Setup
 
@@ -38,9 +56,12 @@ source .venv/bin/activate        # Windows: .venv\Scripts\activate
 
 # 3. Install dependencies
 pip install -r requirements.txt
-```
 
-The embedding model is downloaded automatically from Hugging Face the first time you run the script.
+# 4. Make sure Ollama is running and the models are pulled
+ollama serve                     # in a separate terminal if not already running
+ollama pull qwen3-embedding
+ollama pull llama2
+
 
 ## Usage
 
@@ -66,10 +87,7 @@ The vector store is created on disk (by default in `DATA/vector_store`, or in th
 
 ## Roadmap
 
-- [ ] Connect an LLM (for example via Ollama or an API) to generate answers from the retrieved chunks
-- [ ] Skip PDFs that are already indexed so re-runs don't re-embed them
-- [ ] Add a simple command-line or web interface for asking questions
-- [ ] Add tests
+Next - Add Contextual RAG
 
 ## Notes
 
