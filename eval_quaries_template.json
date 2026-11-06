@@ -1,0 +1,106 @@
+[
+  {
+    "query": "What is the Transformer architecture?",
+    "expected_keywords": ["Transformer", "encoder", "decoder", "attention"]
+  },
+  {
+    "query": "How many layers are in the encoder?",
+    "expected_keywords": ["encoder", "N = 6", "identical layers"]
+  },
+  {
+    "query": "What is the dimension dmodel?",
+    "expected_keywords": ["dmodel", "512", "dimension"]
+  },
+  {
+    "query": "What is multi-head attention?",
+    "expected_keywords": ["Multi-Head Attention", "heads", "attention"]
+  },
+  {
+    "query": "How does scaled dot-product attention work?",
+    "expected_keywords": ["Scaled Dot-Product", "Query", "Key", "Value", "softmax"]
+  },
+  {
+    "query": "Why do we scale the dot products?",
+    "expected_keywords": ["scale", "softmax", "magnitude", "large"]
+  },
+  {
+    "query": "What is positional encoding?",
+    "expected_keywords": ["positional encoding", "position", "sine", "cosine"]
+  },
+  {
+    "query": "What is the formula for positional encoding?",
+    "expected_keywords": ["PE", "sin", "cos", "10000"]
+  },
+  {
+    "query": "Why did they avoid recurrence?",
+    "expected_keywords": ["recurrent", "sequential", "parallel"]
+  },
+  {
+    "query": "What BLEU score did they achieve on English to German translation?",
+    "expected_keywords": ["BLEU", "English-to-German", "WMT"]
+  },
+  {
+    "query": "What BLEU score did they achieve on English to French translation?",
+    "expected_keywords": ["BLEU", "English-to-French"]
+  },
+  {
+    "query": "What is the role of the decoder?",
+    "expected_keywords": ["decoder", "auto-regressive", "masked"]
+  },
+  {
+    "query": "What is masked self-attention?",
+    "expected_keywords": ["mask", "future", "leftward", "positions"]
+  },
+  {
+    "query": "What optimizer was used for training?",
+    "expected_keywords": ["Adam", "optimizer", "warmup"]
+  },
+  {
+    "query": "What is the size of the feed-forward network?",
+    "expected_keywords": ["feed-forward", "2048", "FFN"]
+  },
+  {
+    "query": "What is a residual connection?",
+    "expected_keywords": ["residual", "add", "LayerNorm"]
+  },
+  {
+    "query": "What is layer normalization?",
+    "expected_keywords": ["LayerNorm", "normalization", "mean", "variance"]
+  },
+  {
+    "query": "What training data was used?",
+    "expected_keywords": ["WMT 2014", "sentence pairs", "million"]
+  },
+  {
+    "query": "How does self-attention compare to recurrent layers?",
+    "expected_keywords": ["self-attention", "recurrent", "path length", "complexity"]
+  },
+  {
+    "query": "What is the computational complexity of self-attention per layer?",
+    "expected_keywords": ["complexity", "sequence length", "per layer"]
+  },
+  {
+    "query": "What is attention in the Transformer?",
+    "expected_keywords": ["attention", "query", "key", "value", "mapping"]
+  },
+  {
+    "query": "What is encoder-decoder attention?",
+    "expected_keywords": ["encoder-decoder", "attention", "queries", "keys"]
+  },
+  {
+    "query": "How many attention heads are used?",
+    "expected_keywords": ["h = 8", "heads"]
+  },
+  {
+    "query": "What is the dropout rate used in the model?",
+    "expected_keywords": ["dropout", "Pdrop", "0.1"]
+  },
+  {
+    "query": "Why is the Transformer faster to train than RNNs?",
+    "expected_keywords": ["parallel", "sequential operations", "training"]
+  },
+  {
+    "query": "What is the learning rate schedule used?",
+    "expected_keywords": ["learning rate", "warmup", "steps"]
+  }
+]

@@ -1,0 +1,184 @@
+[
+  {
+    "query": "What is the Transformer architecture?",
+    "relevant_ids": ["03ce4c0f5570686c", "8689fc0f6da55ce0"],
+    "expected_keywords": ["Transformer", "encoder", "decoder", "attention"],
+    "match_scores": [4, 4],
+    "needs_review": false
+  },
+  {
+    "query": "How many layers are in the encoder?",
+    "relevant_ids": ["798a66fcfb4b61ab"],
+    "expected_keywords": ["encoder", "N = 6", "identical layers"],
+    "match_scores": [3],
+    "needs_review": false
+  },
+  {
+    "query": "What is the dimension dmodel?",
+    "relevant_ids": ["7bf85d982a4d5c43", "00543c9e95fc36fb"],
+    "expected_keywords": ["dmodel", "512", "dimension"],
+    "match_scores": [3, 3],
+    "needs_review": false
+  },
+  {
+    "query": "What is multi-head attention?",
+    "relevant_ids": ["f4c954071d6030ef", "dd8abc4696b28453"],
+    "expected_keywords": ["Multi-Head Attention", "heads", "attention"],
+    "match_scores": [5, 4],
+    "needs_review": false
+  },
+  {
+    "query": "How does scaled dot-product attention work?",
+    "relevant_ids": ["678eb5ca0879d188", "38e6a0aef2bf0a16"],
+    "expected_keywords": ["Scaled Dot-Product", "Query", "Key", "Value", "softmax"],
+    "match_scores": [5, 4],
+    "needs_review": false
+  },
+  {
+    "query": "Why do we scale the dot products?",
+    "relevant_ids": ["b15698829fdb7d9b"],
+    "expected_keywords": ["scale", "softmax", "magnitude", "large"],
+    "match_scores": [4],
+    "needs_review": false
+  },
+  {
+    "query": "What is positional encoding?",
+    "relevant_ids": ["86df4740641a9fbc", "143e6f1f5baa74ff"],
+    "expected_keywords": ["positional encoding", "position", "sine", "cosine"],
+    "match_scores": [4, 4],
+    "needs_review": false
+  },
+  {
+    "query": "What is the formula for positional encoding?",
+    "relevant_ids": ["143e6f1f5baa74ff", "c289938b9f413f1a"],
+    "expected_keywords": ["PE", "sin", "cos", "10000"],
+    "match_scores": [4, 4],
+    "needs_review": false
+  },
+  {
+    "query": "Why did they avoid recurrence?",
+    "relevant_ids": ["e74d3026ad64e94c", "c620424744dcef82"],
+    "expected_keywords": ["recurrent", "sequential", "parallel"],
+    "match_scores": [3, 3],
+    "needs_review": false
+  },
+  {
+    "query": "What BLEU score did they achieve on English to German translation?",
+    "relevant_ids": ["be123c21105d5152"],
+    "expected_keywords": ["BLEU", "English-to-German", "WMT"],
+    "match_scores": [4],
+    "needs_review": false
+  },
+  {
+    "query": "What BLEU score did they achieve on English to French translation?",
+    "relevant_ids": ["5aacfbc8d61984a3"],
+    "expected_keywords": ["BLEU", "English-to-French"],
+    "match_scores": [3],
+    "needs_review": false
+  },
+  {
+    "query": "What is the role of the decoder?",
+    "relevant_ids": ["21b8c7253ea036d5", "64c16b26e438f1c6"],
+    "expected_keywords": ["decoder", "auto-regressive", "masked"],
+    "match_scores": [3, 2],
+    "needs_review": false
+  },
+  {
+    "query": "What is masked self-attention?",
+    "relevant_ids": ["f225f82b0270af63", "2e58965e4b5d7567"],
+    "expected_keywords": ["mask", "future", "leftward", "positions"],
+    "match_scores": [4, 3],
+    "needs_review": false
+  },
+  {
+    "query": "What optimizer was used for training?",
+    "relevant_ids": ["1d3792d0eecaf353"],
+    "expected_keywords": ["Adam", "optimizer", "warmup"],
+    "match_scores": [3],
+    "needs_review": false
+  },
+  {
+    "query": "What is the size of the feed-forward network?",
+    "relevant_ids": ["00543c9e95fc36fb", "a7100bbad4ff1582"],
+    "expected_keywords": ["feed-forward", "2048", "FFN"],
+    "match_scores": [4, 3],
+    "needs_review": false
+  },
+  {
+    "query": "What is a residual connection?",
+    "relevant_ids": ["7bf85d982a4d5c43"],
+    "expected_keywords": ["residual", "add", "LayerNorm"],
+    "match_scores": [3],
+    "needs_review": false
+  },
+  {
+    "query": "What is layer normalization?",
+    "relevant_ids": ["7bf85d982a4d5c43", "21b8c7253ea036d5"],
+    "expected_keywords": ["LayerNorm", "normalization", "mean", "variance"],
+    "match_scores": [3, 3],
+    "needs_review": false
+  },
+  {
+    "query": "What training data was used?",
+    "relevant_ids": ["9661b37c41607ab1", "86f8ddde6ef53b3b"],
+    "expected_keywords": ["WMT 2014", "sentence pairs", "million"],
+    "match_scores": [4, 3],
+    "needs_review": false
+  },
+  {
+    "query": "How does self-attention compare to recurrent layers?",
+    "relevant_ids": ["0298894a139422f1", "593fd86adcd662a4", "599dbf299f202f31"],
+    "expected_keywords": ["self-attention", "recurrent", "path length", "complexity"],
+    "match_scores": [4, 4, 3],
+    "needs_review": false
+  },
+  {
+    "query": "What is the computational complexity of self-attention per layer?",
+    "relevant_ids": ["0298894a139422f1", "a5e024d6d1ece269"],
+    "expected_keywords": ["complexity", "sequence length", "per layer"],
+    "match_scores": [4, 3],
+    "needs_review": false
+  },
+  {
+    "query": "What is attention in the Transformer?",
+    "relevant_ids": ["2e58965e4b5d7567", "38e6a0aef2bf0a16"],
+    "expected_keywords": ["attention", "query", "key", "value", "mapping"],
+    "match_scores": [5, 4],
+    "needs_review": false
+  },
+  {
+    "query": "What is encoder-decoder attention?",
+    "relevant_ids": ["c5ec54d189fdaf87", "9a186d62fdd697a2"],
+    "expected_keywords": ["encoder-decoder", "attention", "queries", "keys"],
+    "match_scores": [4, 4],
+    "needs_review": false
+  },
+  {
+    "query": "How many attention heads are used?",
+    "relevant_ids": ["4a25daec63ce9de5"],
+    "expected_keywords": ["h = 8", "heads"],
+    "match_scores": [3],
+    "needs_review": false
+  },
+  {
+    "query": "What is the dropout rate used in the model?",
+    "relevant_ids": ["acb23abf6b929780"],
+    "expected_keywords": ["dropout", "Pdrop", "0.1"],
+    "match_scores": [4],
+    "needs_review": false
+  },
+  {
+    "query": "Why is the Transformer faster to train than RNNs?",
+    "relevant_ids": ["e74d3026ad64e94c", "a5e024d6d1ece269"],
+    "expected_keywords": ["parallel", "sequential operations", "training"],
+    "match_scores": [3, 3],
+    "needs_review": false
+  },
+  {
+    "query": "What is the learning rate schedule used?",
+    "relevant_ids": ["1d3792d0eecaf353"],
+    "expected_keywords": ["learning rate", "warmup", "steps"],
+    "match_scores": [4],
+    "needs_review": false
+  }
+]

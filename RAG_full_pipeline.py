@@ -9,6 +9,7 @@ from rank_bm25 import BM25Okapi
 import numpy as np
 from langchain_core.documents import Document
 from typing import Optional
+import re
 
 path = "C:\\Users\\tyagi\\langchain_projects\\RAG_Understanding"
 embedding_model = "qwen3-embedding" #Ollam
@@ -180,7 +181,7 @@ class HybridRetriever:
 
     @staticmethod
     def _tokenize(text: str) -> list[str]:
-        return text.lower().split()
+        return re.findall(r"\b\w+\b", text.lower())
 
     def retrieve(self, query, top_k=5, score_threshold=0.0, mode="hybrid"):
         mode = mode.lower()
